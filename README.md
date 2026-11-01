@@ -1,2 +1,220 @@
 # ca-do-mixi
-game
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Đua Ngựa Cá Cược (xu ảo)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh; padding: 16px;
+    background: #14532d; color: #fff;
+    font-family: "Segoe UI", Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .wrap { width: 100%; max-width: 760px; }
+  h1 { text-align: center; margin: 8px 0 4px; }
+  .sub { text-align: center; font-size: 13px; opacity: .8; margin-bottom: 14px; }
+
+  .balance {
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(0,0,0,.35); padding: 12px 18px; border-radius: 12px;
+    font-size: 20px; font-weight: 700; margin-bottom: 14px;
+  }
+  .balance span.coin { color: #fbbf24; }
+
+  .track {
+    background: #a16207; border: 4px solid #fff; border-radius: 12px;
+    padding: 6px 0; position: relative; overflow: hidden;
+  }
+  .lane {
+    height: 52px; border-bottom: 2px dashed rgba(255,255,255,.5);
+    position: relative; display: flex; align-items: center;
+  }
+  .lane:last-child { border-bottom: none; }
+  .lane .num {
+    position: absolute; left: 6px; font-weight: 800; width: 26px; height: 26px;
+    border-radius: 50%; text-align: center; line-height: 26px; color: #fff; font-size: 14px;
+  }
+  .horse {
+    position: absolute; left: 40px; font-size: 32px;
+    transform: scaleX(-1); transition: left .05s linear;
+  }
+  .finish {
+    position: absolute; right: 10px; top: 0; bottom: 0; width: 8px;
+    background: repeating-linear-gradient(#fff 0 8px, #000 8px 16px);
+  }
+
+  .panel {
+    background: rgba(0,0,0,.35); border-radius: 12px; padding: 16px; margin-top: 14px;
+  }
+  .panel h3 { margin-bottom: 10px; font-size: 16px; }
+  .picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .pick {
+    padding: 10px 4px; border: 3px solid transparent; border-radius: 10px;
+    background: #fff; color: #222; cursor: pointer; font-weight: 700; text-align: center;
+  }
+  .pick small { display: block; font-weight: 500; color: #666; }
+  .pick.active { border-color: #fbbf24; background: #fef3c7; }
+
+  .bet-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .bet-row input {
+    flex: 1; min-width: 120px; padding: 12px; font-size: 18px; border-radius: 10px;
+    border: none; text-align: center; font-weight: 700;
+  }
+  .chip {
+    padding: 12px 14px; border: none; border-radius: 10px; cursor: pointer;
+    background: #fbbf24; color: #222; font-weight: 700;
+  }
+  .go {
+    width: 100%; margin-top: 12px; padding: 16px; font-size: 18px; font-weight: 800;
+    border: none; border-radius: 12px; cursor: pointer; background: #dc2626; color: #fff;
+  }
+  .go:disabled { opacity: .5; cursor: not-allowed; }
+  .msg { margin-top: 12px; text-align: center; font-size: 17px; min-height: 26px; font-weight: 600; }
+  .win { color: #86efac; } .lose { color: #fca5a5; }
+  .reset { background: none; border: 1px solid #fff; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  .history { font-size: 13px; opacity: .85; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏇 Đua Ngựa Cá Cược</h1>
+  <p class="sub">Game giải trí dùng xu ảo — không liên quan đến tiền thật</p>
+
+  <div class="balance">
+    <div>💰 Xu: <span class="coin" id="balance">1000</span></div>
+    <button class="reset" id="btnReset">Chơi lại từ đầu</button>
+  </div>
+
+  <div class="track" id="track"></div>
+
+  <div class="panel">
+    <h3>1. Chọn ngựa (thắng được x3.5 tiền cược)</h3>
+    <div class="picks" id="picks"></div>
+
+    <h3 style="margin-top:14px">2. Nhập số xu cược</h3>
+    <div class="bet-row">
+      <input type="number" id="bet" min="1" value="100">
+      <button class="chip" data-v="50">50</button>
+      <button class="chip" data-v="100">100</button>
+      <button class="chip" data-v="500">500</button>
+      <button class="chip" data-v="all">ALL-IN</button>
+    </div>
+
+    <button class="go" id="go">🏁 BẮT ĐẦU ĐUA</button>
+    <div class="msg" id="msg"></div>
+    <div class="history" id="history"></div>
+  </div>
+</div>
+
+<script>
+const HORSES = [
+  { name: 'Ngựa Đỏ',   color: '#ef4444' },
+  { name: 'Ngựa Xanh', color: '#3b82f6' },
+  { name: 'Ngựa Vàng', color: '#eab308' },
+  { name: 'Ngựa Tím',  color: '#a855f7' },
+];
+const START_COINS = 1000;
+const PAYOUT = 3.5;       // thắng nhận lại cược x 3.5 (nhà cái ăn một phần)
+const FINISH = 88;        // vị trí vạch đích (%)
+
+const $ = id => document.getElementById(id);
+let balance = START_COINS;
+let selected = 0;
+let racing = false;
+let results = [];
+
+try { balance = Number(localStorage.getItem('horse_balance')) || START_COINS; } catch (e) {}
+
+function save() { try { localStorage.setItem('horse_balance', balance); } catch (e) {} }
+
+/* ---------- Dựng giao diện ---------- */
+function buildTrack() {
+  $('track').innerHTML = HORSES.map((h, i) => `
+    <div class="lane">
+      <div class="num" style="background:${h.color}">${i + 1}</div>
+      <div class="horse" id="horse${i}">🐎</div>
+    </div>`).join('') + '<div class="finish"></div>';
+}
+function buildPicks() {
+  $('picks').innerHTML = HORSES.map((h, i) => `
+    <div class="pick ${i === selected ? 'active' : ''}" data-i="${i}">
+      ${i + 1}. ${h.name}<small>x${PAYOUT}</small>
+    </div>`).join('');
+  document.querySelectorAll('.pick').forEach(el =>
+    el.onclick = () => { if (racing) return; selected = +el.dataset.i; buildPicks(); });
+}
+function render() {
+  $('balance').textContent = balance.toLocaleString('vi-VN');
+  $('go').disabled = racing || balance <= 0;
+}
+function setMsg(text, cls = '') { $('msg').className = 'msg ' + cls; $('msg').textContent = text; }
+
+/* ---------- Nút chọn mức cược ---------- */
+document.querySelectorAll('.chip').forEach(btn => btn.onclick = () => {
+  if (racing) return;
+  $('bet').value = btn.dataset.v === 'all' ? balance : Math.min(+btn.dataset.v, balance);
+});
+
+/* ---------- Đua ---------- */
+function startRace() {
+  if (racing) return;
+  const bet = Math.floor(Number($('bet').value));
+  if (!bet || bet < 1) return setMsg('Hãy nhập số xu cược hợp lệ.', 'lose');
+  if (bet > balance) return setMsg('Bạn không đủ xu để cược mức này.', 'lose');
+
+  racing = true;
+  balance -= bet;
+  save(); render();
+  setMsg('Các ngựa đang chạy...');
+
+  const pos = HORSES.map(() => 0);
+  const speedBias = HORSES.map(() => 0.6 + Math.random() * 0.8); // mỗi lượt đua khác nhau
+  let winner = -1;
+
+  function tick() {
+    for (let i = 0; i < HORSES.length; i++) {
+      // tốc độ ngẫu nhiên mỗi khung hình => kết quả không đoán trước được
+      pos[i] += (Math.random() * 0.5 + 0.1) * speedBias[i] * (0.8 + Math.random() * 0.6);
+      $('horse' + i).style.left = `calc(40px + ${Math.min(pos[i], FINISH)}% * 0.85)`;
+      if (pos[i] >= FINISH && winner === -1) winner = i;
+    }
+    if (winner === -1) return requestAnimationFrame(tick);
+    finish(winner, bet);
+  }
+  requestAnimationFrame(tick);
+}
+
+function finish(winner, bet) {
+  racing = false;
+  results.unshift(winner + 1);
+  results = results.slice(0, 8);
+
+  if (winner === selected) {
+    const prize = Math.floor(bet * PAYOUT);
+    balance += prize;
+    setMsg(`🎉 ${HORSES[winner].name} thắng! Bạn nhận +${prize - bet} xu`, 'win');
+  } else {
+    setMsg(`😢 ${HORSES[winner].name} thắng. Bạn mất ${bet} xu`, 'lose');
+  }
+  if (balance <= 0) setMsg('Bạn hết xu rồi! Nhấn "Chơi lại từ đầu" để nhận lại 1000 xu.', 'lose');
+
+  $('history').textContent = 'Ngựa thắng gần đây: ' + results.join(' • ');
+  save(); render();
+  $('bet').value = Math.min(Number($('bet').value) || 100, Math.max(balance, 1));
+}
+
+$('go').onclick = startRace;
+$('btnReset').onclick = () => {
+  if (racing) return;
+  balance = START_COINS; save(); render();
+  results = []; $('history').textContent = '';
+  buildTrack(); setMsg('Đã đặt lại 1000 xu. Chúc bạn may mắn!');
+};
+
+buildTrack(); buildPicks(); render();
+</script>
+</body>
+</html>
